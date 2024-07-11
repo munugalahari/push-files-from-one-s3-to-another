@@ -1,0 +1,84 @@
+import boto3
+import json
+
+# Credentials for Account A
+ACCESS_KEY_A = 'your_access_key_A'
+SECRET_KEY_A = 'your_secret_key_A'
+
+# Credentials for Account B
+ACCESS_KEY_B = 'your_access_key_B'
+SECRET_KEY_B = 'your_secret_key_B'
+
+# S3 bucket and folder paths
+BUCKET_NAME_A = 'bucket_A'
+BUCKET_NAME_B = 'bucket_B'
+FOLDERS = ['folder1', 'folder2', 'folder3']  # List of folders in Account A and B
+
+def transfer_files():
+    # Connect to S3 in Account A
+    s3_A = boto3.client('s3', aws_access_key_id=ACCESS_KEY_A, aws_secret_access_key=SECRET_KEY_A)
+
+    # Connect to S3 in Account B
+    s3_B = boto3.client('s3', aws_access_key_id=ACCESS_KEY_B, aws_secret_access_key=SECRET_KEY_B)
+
+    for folder in FOLDERS:
+        try:
+            # Read manifest file from S3 bucket in Account A
+            manifest_key = f'{folder}/manifest.json'
+            response = s3_A.get_object(Bucket=BUCKET_NAME_A, Key=manifest_key)
+            manifest_content = response['Body'].read().decode('utf-8')
+            manifest_data = json.loads(manifest_content)
+
+            # Transfer files from Account A to Account B
+            for filename, filepath in manifest_data.items():
+                # Check if file exists in Account A's folder
+                object_key = f'{folder}/{filepath}'
+                try:
+                    # Check if the object exists in S3
+                    s3_A.head_object(Bucket=BUCKET_NAME_A, Key=object_key)
+                except s3_A.exceptions.ClientError as e:
+                    if e.response['Error']['Code'] == '404':
+                        print(f"File '{filepath}' mentioned in manifest.json not found in {folder}. Skipping...")
+                        continue
+                    else:
+                        raise
+
+                # Download file from Account A
+                response_file = s3_A.get_object(Bucket=BUCKET_NAME_A, Key=object_key)
+                file_content = response_file['Body'].read()
+
+                # Upload file to Account B
+                s3_B.put_object(Bucket=BUCKET_NAME_B, Key=f'{folder}/{filename}', Body=file_content)
+
+                print(f"File '{filename}' uploaded successfully to {BUCKET_NAME_B}/{folder}")
+
+        except Exception as e:
+            print(f"Error transferring files from {folder}: {str(e)}")
+
+if _name_ == "_main_":
+    transfer_files()
+'''
+
+### Explanation:
+
+1. *Credentials and Configuration*: Replace ACCESS_KEY_A, SECRET_KEY_A with credentials for Account A, and ACCESS_KEY_B, SECRET_KEY_B with credentials for Account B. Adjust BUCKET_NAME_A and BUCKET_NAME_B to the actual bucket names in Account A and Account B respectively.
+
+2. *Folders Configuration*: FOLDERS is a list containing the names of the folders in both Account A and Account B. These folders should have matching names and structures between the two accounts.
+
+3. *Reading Manifest File*: Reads and parses the manifest.json file for each folder in Account A. Each key in the JSON represents a filename, and its corresponding value is the path to the file within the folder.
+
+4. *Checking File Existence*: Before attempting to download and upload each file, the script checks if the file exists in Account A's S3 bucket. If not found (404 error), it logs a message and skips that file.
+
+5. *File Transfer Process*: For each valid file found in the manifest:
+   - Downloads the file from Account A.
+   - Uploads the file to the corresponding folder (folder) in Account B with the filename specified in the manifest.
+
+6. *Error Handling*: Basic error handling is implemented to catch and log any exceptions that occur during the file transfer process.
+
+7. *Main Execution*: Calls transfer_files() to initiate the file transfer process for all specified folders.
+
+### Security Note:
+- Ensure that AWS credentials (ACCESS_KEY_A, SECRET_KEY_A, ACCESS_KEY_B, SECRET_KEY_B) are handled securely, such as using AWS IAM roles with appropriate permissions instead of hardcoding keys in your script.
+
+This script should now effectively handle the scenario where files specified in manifest.json within each folder in Account A are transferred to the corresponding folders in Account B using Python and Boto3.
+  Adjustments may still be necessary based on your exact AWS setup and requirements.'''
